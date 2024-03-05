@@ -1,9 +1,13 @@
 import * as signalR from "@microsoft/signalr";
+import { jwtDecode } from "jwt-decode"; // Assurez-vous que l'importation est correcte
 import React, { useEffect, useState } from "react";
 
+// Ajustement de l'interface pour correspondre à la structure attendue d'un message
 interface IMessage {
-  user: string;
-  message: string;
+  userId: string;
+  content: string;
+  sendAt: string; // Assurez-vous que cette propriété est au format que vous souhaitez afficher
+  roomId: string;
 }
 
 const Chat: React.FC = () => {
@@ -12,40 +16,67 @@ const Chat: React.FC = () => {
   );
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [message, setMessage] = useState<string>("");
+  const token = localStorage.getItem("token");
+
+  // Tentative de décodage du token avec gestion d'erreur
+  let userDecoded: any = null;
+  if (token) {
+    try {
+      userDecoded = jwtDecode(token);
+    } catch (error) {
+      console.error("Token decoding failed", error);
+      // Gérer ici la redirection vers la page de connexion ou afficher une erreur
+    }
+  }
 
   useEffect(() => {
-    const connect = new signalR.HubConnectionBuilder()
-      .withUrl("http://localhost:5284/chatHub") // Remplacez par l'URL de votre Hub SignalR
-      .configureLogging(signalR.LogLevel.Information)
-      .build();
+    if (token) {
+      const connect = new signalR.HubConnectionBuilder()
+        .withUrl("http://localhost:5284/chatHub", {
+          accessTokenFactory: () => Promise.resolve(token),
+        })
+        .configureLogging(signalR.LogLevel.Information)
+        .build();
 
-    setConnection(connect);
-  }, []);
-
-  useEffect(() => {
-    if (connection) {
-      connection
+      connect
         .start()
         .then(() => {
           console.log("Connected!");
+          connect
+            .invoke("JoinRoom", "room1")
+            .catch((error) => console.error(error));
 
-          connection.on(
-            "ReceiveMessage",
-            (user: string, receivedMessage: string) => {
-              setMessages((messages) => [
-                ...messages,
-                { user, message: receivedMessage },
-              ]);
-            }
-          );
+          connect.on("ReceiveMessage", (message: IMessage) => {
+            setMessages((prevMessages) => [...prevMessages, message]);
+          });
+
+          // Gestion des événements RoomJoined et UserJoined
+          connect.on("RoomJoined", (roomMessage: string) => {
+            console.log(roomMessage);
+          });
+
+          connect.on("UserJoined", (userMessage: string) => {
+            console.log(userMessage);
+          });
         })
         .catch((err) => console.error("Connection failed: ", err));
+
+      setConnection(connect);
+
+      // Nettoyage de la connexion
+      return () => {
+        connect.stop();
+      };
     }
-  }, [connection]);
+  }, [token]); // Ajoutez d'autres dépendances si nécessaire
 
   const sendMessage = async () => {
-    if (connection) await connection.invoke("SendMessage", "room1", message); // Adaptez 'room1' selon votre besoin
-    setMessage("");
+    if (connection && message.trim()) {
+      await connection
+        .invoke("SendMessage", "room1", message)
+        .catch((err) => console.error("Send message failed:", err));
+      setMessage("");
+    }
   };
 
   return (
@@ -58,10 +89,10 @@ const Chat: React.FC = () => {
       <button onClick={sendMessage}>Send</button>
 
       <ul>
-        bonjour
         {messages.map((m, index) => (
           <li key={index}>
-            {m.user}: {m.message}
+            {m.userId}: {m.content}{" "}
+            <small>{new Date(m.sendAt).toLocaleString()}</small>
           </li>
         ))}
       </ul>
