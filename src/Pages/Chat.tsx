@@ -1,12 +1,11 @@
 import * as signalR from "@microsoft/signalr";
-import { jwtDecode } from "jwt-decode"; // Assurez-vous que l'importation est correcte
+import { jwtDecode } from "jwt-decode";
 import React, { useEffect, useState } from "react";
 
-// Ajustement de l'interface pour correspondre à la structure attendue d'un message
 interface IMessage {
   userId: string;
   content: string;
-  sendAt: string; // Assurez-vous que cette propriété est au format que vous souhaitez afficher
+  sendAt: string;
   roomId: string;
 }
 
@@ -18,14 +17,12 @@ const Chat: React.FC = () => {
   const [message, setMessage] = useState<string>("");
   const token = localStorage.getItem("token");
 
-  // Tentative de décodage du token avec gestion d'erreur
   let userDecoded: any = null;
   if (token) {
     try {
       userDecoded = jwtDecode(token);
     } catch (error) {
       console.error("Token decoding failed", error);
-      // Gérer ici la redirection vers la page de connexion ou afficher une erreur
     }
   }
 
@@ -43,14 +40,13 @@ const Chat: React.FC = () => {
         .then(() => {
           console.log("Connected!");
           connect
-            .invoke("JoinRoom", "room1")
+            .invoke("JoinRoom", userDecoded.given_name, "room1")
             .catch((error) => console.error(error));
 
           connect.on("ReceiveMessage", (message: IMessage) => {
             setMessages((prevMessages) => [...prevMessages, message]);
           });
 
-          // Gestion des événements RoomJoined et UserJoined
           connect.on("RoomJoined", (roomMessage: string) => {
             console.log(roomMessage);
           });
@@ -63,17 +59,16 @@ const Chat: React.FC = () => {
 
       setConnection(connect);
 
-      // Nettoyage de la connexion
       return () => {
         connect.stop();
       };
     }
-  }, [token]); // Ajoutez d'autres dépendances si nécessaire
+  }, [token]);
 
   const sendMessage = async () => {
     if (connection && message.trim()) {
       await connection
-        .invoke("SendMessage", "room1", message)
+        .invoke("SendMessage", userDecoded.sub, "room1", message)
         .catch((err) => console.error("Send message failed:", err));
       setMessage("");
     }
@@ -88,10 +83,26 @@ const Chat: React.FC = () => {
       />
       <button onClick={sendMessage}>Send</button>
 
-      <ul>
+      <ul style={{ listStyleType: "none", padding: 0 }}>
         {messages.map((m, index) => (
-          <li key={index}>
-            {m.userId}: {m.content}{" "}
+          <li
+            key={index}
+            style={{
+              textAlign: m.userId === userDecoded.sub ? "right" : "left",
+              marginBottom: "10px",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-block",
+                padding: "5px 10px",
+                borderRadius: "10px",
+                backgroundColor:
+                  m.userId === userDecoded.sub ? "#DCF8C6" : "#EAEAEA",
+              }}
+            >
+              {m.content}
+            </div>
             <small>{new Date(m.sendAt).toLocaleString()}</small>
           </li>
         ))}
