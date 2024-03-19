@@ -5,7 +5,7 @@ import React, { useEffect, useState } from "react";
 interface IMessage {
   userId: string;
   content: string;
-  sendAt: string;
+  createdAt: string;
   roomId: string;
 }
 
@@ -19,18 +19,38 @@ const Chat: React.FC = () => {
 
   let userDecoded: any = null;
   if (token) {
-    try {
-      userDecoded = jwtDecode(token);
-    } catch (error) {
-      console.error("Token decoding failed", error);
-    }
+    userDecoded = jwtDecode(token);
   }
 
   useEffect(() => {
+    // Fonction pour récupérer l'historique des messages
+    const fetchMessages = async () => {
+      try {
+        const response = await fetch(
+          "http://localhost:5187/api/Room/65f2c89102308c2e1dce7a96/messages",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          throw new Error(`Error: ${response.statusText}`);
+        }
+        const data = await response.json();
+        setMessages(data);
+        // console.log(data);
+      } catch (error) {
+        console.error("Fetching messages failed", error);
+      }
+    };
+
     if (token) {
+      fetchMessages();
+
       const connect = new signalR.HubConnectionBuilder()
         .withUrl("http://localhost:5284/chatHub", {
-          accessTokenFactory: () => Promise.resolve(token),
+          accessTokenFactory: () => token,
         })
         .configureLogging(signalR.LogLevel.Information)
         .build();
@@ -40,7 +60,11 @@ const Chat: React.FC = () => {
         .then(() => {
           console.log("Connected!");
           connect
-            .invoke("JoinRoom", userDecoded.given_name, "room1")
+            .invoke(
+              "JoinRoom",
+              userDecoded.given_name,
+              "65f2c89102308c2e1dce7a96"
+            )
             .catch((error) => console.error(error));
 
           connect.on("ReceiveMessage", (message: IMessage) => {
@@ -68,7 +92,7 @@ const Chat: React.FC = () => {
   const sendMessage = async () => {
     if (connection && message.trim()) {
       await connection
-        .invoke("SendMessage", userDecoded.sub, "room1", message)
+        .invoke("SendMessage", "65f2c89102308c2e1dce7a96", message)
         .catch((err) => console.error("Send message failed:", err));
       setMessage("");
     }
@@ -88,7 +112,7 @@ const Chat: React.FC = () => {
           <li
             key={index}
             style={{
-              textAlign: m.userId === userDecoded.sub ? "right" : "left",
+              textAlign: m.userId === userDecoded?.sub ? "right" : "left",
               marginBottom: "10px",
             }}
           >
@@ -98,12 +122,12 @@ const Chat: React.FC = () => {
                 padding: "5px 10px",
                 borderRadius: "10px",
                 backgroundColor:
-                  m.userId === userDecoded.sub ? "#DCF8C6" : "#EAEAEA",
+                  m.userId === userDecoded?.sub ? "#DCF8C6" : "#EAEAEA",
               }}
             >
               {m.content}
             </div>
-            <small>{new Date(m.sendAt).toLocaleString()}</small>
+            <small>{new Date(m.createdAt).toLocaleString()}</small>
           </li>
         ))}
       </ul>
